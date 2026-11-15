@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,12 +18,26 @@ import (
 // フロントエンドが期待するJSONの「形」をGoの構造体で定義する
 // `json:"..."`タグで、Goのフィールド名（大文字）とJSONのキー名（小文字）を対応させる
 
-// 商品1つのデータを表す構造体
-type Product struct {
+// 商品一覧用の構造体
+type ProductListItem struct {
 	ID       int     `json:"id"`
 	Name     string  `json:"name"`
 	Price    int     `json:"price"`
 	ImageURL *string `json:"image_url"` // NULL許容
+}
+
+// 商品詳細用の構造体
+type Product struct {
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"` // NULL許容
+	Price       int       `json:"price"`
+	Stock       int       `json:"stock"`
+	ImageURL    *string   `json:"image_url"` // NULL許容
+	SalesCount  int       `json:"sales_count"`
+	IsFeatured  bool      `json:"is_featured"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // ページネーション情報を表す構造体
@@ -35,8 +50,8 @@ type Pagination struct {
 
 // 商品一覧ページ全体のレスポンスを表す構造体
 type ProductsPageData struct {
-	Products   []Product  `json:"products"`
-	Pagination Pagination `json:"pagination"`
+	Products   []ProductListItem `json:"products"`
+	Pagination Pagination        `json:"pagination"`
 }
 
 // --- 2. ハンドラ定義 ---
@@ -76,13 +91,27 @@ func GetProductsHandler(c *gin.Context) {
 		orderByClause = "ORDER BY created_at DESC"
 	}
 
+	// クエリパラメータ（?keyword=X）から「検索キーワード」を取得する
+	keyword := c.DefaultQuery("keyword", "")
+
+	// 検索条件（WHERE句）を構築する
+	var whereClause string
+	var whereParams []any // WHERE句用のパラメータを格納するスライス
+	if keyword != "" {
+		whereClause = "WHERE (name LIKE ? OR description LIKE ?)"
+		// パラメータ（%キーワード%）をスライスに追加する
+		likeKeyword := "%" + keyword + "%"
+		whereParams = append(whereParams, likeKeyword, likeKeyword)
+	}
+
 	// データベース接続を取得する
 	db := database.GetDB()
 
 	// 商品の総数を取得するSQL文を実行する
 	var totalItems int
-	countQuery := "SELECT COUNT(*) FROM products"
-	err = db.QueryRow(countQuery).Scan(&totalItems)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM products %s", whereClause)
+	// whereParams...でスライスの内容を展開してQueryRow()メソッドに渡す
+	err = db.QueryRow(countQuery, whereParams...).Scan(&totalItems)
 	if err != nil {
 		log.Printf("商品総数の取得エラー: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
@@ -102,11 +131,15 @@ func GetProductsHandler(c *gin.Context) {
 				image_url
 			FROM products
 			%s
+			%s
 			LIMIT ? OFFSET ?
-		`, orderByClause) // %sの部分に変数orderByClauseが挿入される
+		`, whereClause, orderByClause) // %sの部分に変数whereClauseとorderByClauseが挿入される
+
+	// SQL文に渡すパラメータを準備する
+	queryParams := append(whereParams, perPage, offset)
 
 	// SQL文を実行する
-	rows, err := db.Query(query, perPage, offset)
+	rows, err := db.Query(query, queryParams...)
 	if err != nil {
 		log.Printf("商品一覧の取得エラー: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
@@ -115,21 +148,21 @@ func GetProductsHandler(c *gin.Context) {
 	defer rows.Close()
 
 	// 商品データを格納するスライス
-	products := []Product{}
+	products := []ProductListItem{}
 
 	// SQL文の実行結果をスキャンする
 	for rows.Next() {
-		var p Product
+		var p ProductListItem
 		// image_urlカラムがNULLの場合に対応するため、sql.NullString型の変数imageUrlを用意する
 		var imageUrl sql.NullString
-		// 取得したデータをProduct構造体のフィールドにマッピングする
+		// 取得したデータをProductListItem構造体のフィールドにマッピングする
 		// image_urlカラムは変数imageUrlにスキャンする
 		if err := rows.Scan(&p.ID, &p.Name, &p.Price, &imageUrl); err != nil {
 			log.Printf("商品データのスキャンエラー: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
 			return
 		}
-		// 変数imageUrlがNULLでない場合にのみ、Product構造体のImageURLフィールドに値をセットする
+		// 変数imageUrlがNULLでない場合にのみ、ProductListItem構造体のImageURLフィールドに値をセットする
 		if imageUrl.Valid {
 			p.ImageURL = &imageUrl.String
 		}
@@ -157,4 +190,74 @@ func GetProductsHandler(c *gin.Context) {
 
 	// JSONとしてレスポンスを返す
 	c.JSON(http.StatusOK, response)
+}
+
+// 商品詳細を返す関数
+func GetProductByIDHandler(c *gin.Context) {
+	// パスパラメータ（.../products/:idのうち、:idの部分）から「商品ID」を取得する
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		log.Printf("不正な商品ID形式です: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "商品IDが不正です"})
+		return
+	}
+
+	// データベース接続を取得する
+	db := database.GetDB()
+
+	// 商品詳細を取得するSQL文を準備する
+	query := `
+		SELECT
+			id, name,
+			description,
+			price,
+			stock,
+			image_url,
+			sales_count,
+			is_featured,
+			created_at,
+			updated_at
+		FROM products
+		WHERE id = ?
+	`
+	var p Product
+	var description sql.NullString
+	var imageUrl sql.NullString
+
+	// SQL文を実行して結果をスキャンする
+	err = db.QueryRow(query, id).Scan(
+		&p.ID,
+		&p.Name,
+		&description,
+		&p.Price,
+		&p.Stock,
+		&imageUrl,
+		&p.SalesCount,
+		&p.IsFeatured,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("商品が見つかりません: ID=%d", id)
+			c.JSON(http.StatusNotFound, gin.H{"error": "商品が見つかりませんでした"})
+		} else {
+			log.Printf("商品取得エラー (ID=%d): %v", id, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
+		}
+		return
+	}
+
+	// 変数descriptionと変数imageUrlがNULLでない場合にのみ、Product構造体の対応するフィールドに値をセットする
+	if description.Valid {
+		p.Description = &description.String
+	}
+	if imageUrl.Valid {
+		p.ImageURL = &imageUrl.String
+	}
+
+	// JSONとしてレスポンスを返す
+	c.JSON(http.StatusOK, p)
 }
