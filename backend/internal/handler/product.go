@@ -67,6 +67,8 @@ func GetProductsHandler(c *gin.Context) {
 	switch sort {
 	case "priceAsc": // 価格が安い順
 		orderByClause = "ORDER BY price ASC"
+	case "priceDesc": // 価格が高い順
+		orderByClause = "ORDER BY price DESC"
 	case "new": // 新着順
 		orderByClause = "ORDER BY created_at DESC"
 	default:

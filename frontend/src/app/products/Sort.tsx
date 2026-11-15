@@ -22,6 +22,7 @@ export default function Sort({ sort, perPage, keyword }: Props) {
       >
         <option value="new">新着順</option>
         <option value="priceAsc">価格が安い順</option>
+        <option value="priceDesc">価格が高い順</option>
       </select>
     </form>
   );
