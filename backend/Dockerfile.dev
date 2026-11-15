@@ -1,6 +1,9 @@
 # Goの公式イメージをベースにする
 FROM golang:1.25-alpine
 
+# タイムゾーンデータをインストールする（alpineには含まれておらず、環境変数TZを有効にするために必要）
+RUN apk add --no-cache tzdata
+
 # ホットリロードツール「air」をインストールする
 RUN go install github.com/air-verse/air@v1.63.1
 

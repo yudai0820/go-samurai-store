@@ -50,6 +50,8 @@ services:
     environment:
       # .envファイルからDB接続情報を読み込む
       DB_DSN: ${DB_DSN}
+      # ログなどの時刻を日本時間で表示する（デフォルトはUTC）
+      TZ: Asia/Tokyo
     depends_on:
       # dbサービスの「健康診断OK（healthy）」を待ってからbackendサービスを起動する
       db:
