@@ -50,6 +50,8 @@ services:
     environment:
       # .envファイルからDB接続情報を読み込む
       DB_DSN: ${DB_DSN}
+      # .envファイルからJWTの秘密鍵を読み込む
+      JWT_SECRET: ${JWT_SECRET}
       # ログなどの時刻を日本時間で表示する（デフォルトはUTC）
       TZ: Asia/Tokyo
     depends_on:
