@@ -13,12 +13,16 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
+	"github.com/yudai0820/go-samurai-store/backend/internal/database"
 	"github.com/yudai0820/go-samurai-store/backend/internal/handler"
 )
 
 func main() {
 	// マイグレーションを実行する
 	runMigration()
+
+	// データベース接続を初期化する
+	database.InitDB()
 
 	// Ginのデフォルトルーターを作成する
 	router := gin.Default()
