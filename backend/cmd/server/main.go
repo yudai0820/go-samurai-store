@@ -92,6 +92,8 @@ func main() {
 		admin.Use(middleware.AdminAuthMiddleware())
 		{
 			admin.POST("/products", handler.AdminCreateProductHandler)
+			admin.PUT("/products/:id", handler.AdminUpdateProductHandler)
+			admin.DELETE("/products/:id", handler.AdminDeleteProductHandler)
 		}
 	}
 	// Ginサーバーをポート8080で起動する
