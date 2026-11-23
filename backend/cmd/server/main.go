@@ -70,6 +70,7 @@ func main() {
 		api.GET("/home", handler.GetHomePageProductsHandler)
 
 		api.POST("/users", handler.RegisterUserHandler)
+		api.POST("/inquiries", handler.CreateInquiryHandler)
 
 		auth := api.Group("/auth")
 		{
@@ -94,6 +95,7 @@ func main() {
 			admin.POST("/products", handler.AdminCreateProductHandler)
 			admin.PUT("/products/:id", handler.AdminUpdateProductHandler)
 			admin.DELETE("/products/:id", handler.AdminDeleteProductHandler)
+			admin.GET("/inquiries", handler.ListInquiriesHandler)
 		}
 	}
 	// Ginサーバーをポート8080で起動する
